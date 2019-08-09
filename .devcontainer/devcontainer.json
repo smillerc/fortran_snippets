@@ -1,0 +1,15 @@
+{
+	"name": "IRIS3D",
+	"image": "smillerc/gcc-mpi-dev:9.1",
+	"runArgs": ["-u", "mpi", "--entrypoint", "/bin/zsh"],
+	"extensions": [
+		"krvajalm.linter-gfortran",
+		"hansec.fortran-ls",
+		"aaron-bond.better-comments",
+		"twxs.cmake",
+    ],
+	"postCreateCommand": "pip install fortran-language-server --user",
+	"settings": {
+		"fortran-ls.executablePath": "/home/mpi/.local/bin/fortls"
+	}
+}
