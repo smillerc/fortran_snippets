@@ -43,17 +43,27 @@ contains
     call get_commandline_result_character(str='uname', result=self%system_type)
 
     if (self%system_type == 'Darwin') then
-      call get_commandline_result_integer(str='sysctl -a | grep machdep.cpu.core_count | cut -d":" -f2', int_value=self%n_cpus)
-      call get_commandline_result_integer(str='sysctl -a | grep machdep.cpu.thread_count | cut -d":" -f2', int_value=self%n_threads)
-    elseif (self%system_type == 'Linux') then
-      call get_commandline_result_integer(str='lscpu | grep "^CPU(s):" | cut -d":" -f2', int_value=self%n_cpus)
-      call get_commandline_result_integer(str='lscpu | grep "^Socket(s):" | cut -d":" -f2', int_value=self%n_sockets)
-      call get_commandline_result_integer(str='lscpu | grep "Thread(s) per core:" | cut -d":" -f2', int_value=self%threads_per_cpu)
-    end if
+      call get_commandline_result_integer(str='sysctl -a | grep machdep.cpu.core_count | cut -d":" -f2', &
+                                          int_value=self%n_physical_cores)
+      call get_commandline_result_integer(str='sysctl -a | grep machdep.cpu.thread_count | cut -d":" -f2', &
+                                          int_value=self%n_threads)
 
-    self%n_physical_cores = self%n_cpus/self%threads_per_cpu
-    self%n_physical_cores_per_socket = self%n_physical_cores/self%n_sockets
-    self%n_threads = self%n_physical_cores*self%threads_per_cpu
+      self%n_cpus = self%n_threads
+      self%n_physical_cores_per_socket = self%n_physical_cores/self%n_sockets
+      self%threads_per_cpu = self%n_threads/self%n_physical_cores
+
+    elseif (self%system_type == 'Linux') then
+      call get_commandline_result_integer(str='lscpu | grep "^CPU(s):" | cut -d":" -f2', &
+                                          int_value=self%n_cpus)
+      call get_commandline_result_integer(str='lscpu | grep "^Socket(s):" | cut -d":" -f2', &
+                                          int_value=self%n_sockets)
+      call get_commandline_result_integer(str='lscpu | grep "Thread(s) per core:" | cut -d":" -f2', &
+                                          int_value=self%threads_per_cpu)
+
+      self%n_physical_cores = self%n_cpus/self%threads_per_cpu
+      self%n_physical_cores_per_socket = self%n_physical_cores/self%n_sockets
+      self%n_threads = self%n_physical_cores*self%threads_per_cpu
+    end if
 
     if (self%n_cpus > self%n_physical_cores) self%is_hyperthreaded = .true.
 
