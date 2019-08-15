@@ -1,2 +1,3 @@
-# coarray_fortran_sandbox
-A collection of small tutorial-like coarray fortran programs
+# Fortran snippets
+
+A collection of small codes/utilities for modern fortran
