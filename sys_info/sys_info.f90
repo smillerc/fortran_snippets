@@ -16,12 +16,12 @@ module sys_info_mod
 
   type :: sys_info_t
 
-    integer :: n_physical_cores = 0              !! Total physicals cores on chip
-    integer :: n_physical_cores_per_socket = 0   !! Physical cores per socket
-    integer :: n_cpus = 0                        !! Total cpus (including hyperthreading)
+    integer :: n_physical_cores = 1              !! Total physicals cores on chip
+    integer :: n_physical_cores_per_socket = 1   !! Physical cores per socket
+    integer :: n_cpus = 1                        !! Total cpus (including hyperthreading)
     integer :: n_sockets = 1                     !! Total sockets on the motherboard
-    integer :: n_threads = 0                     !! Total thread count
-    integer :: threads_per_cpu = 0               !! Threads per cpu
+    integer :: n_threads = 1                     !! Total thread count
+    integer :: threads_per_cpu = 1               !! Threads per cpu
     logical :: is_hyperthreaded = .false.        !! Is hypterthreading on?
     character(:), allocatable :: system_type     !! Linux, Darwin, etc.?
     character(:), allocatable :: hostname        !! Full host name
