@@ -16,15 +16,21 @@ module sys_info_mod
 
   type :: sys_info_t
 
-    integer :: ncpus
-    integer :: nthreads
-    logical :: is_hyperthreaded
-    character(:), allocatable :: system_type
-    character(:), allocatable :: hostname
+    integer :: n_physical_cores = 0              !! Total physicals cores on chip
+    integer :: n_physical_cores_per_socket = 0   !! Physical cores per socket
+    integer :: n_cpus = 0                        !! Total cpus (including hyperthreading)
+    integer :: n_sockets = 1                     !! Total sockets on the motherboard
+    integer :: n_threads = 0                     !! Total thread count
+    integer :: threads_per_cpu = 0               !! Threads per cpu
+    logical :: is_hyperthreaded = .false.        !! Is hypterthreading on?
+    character(:), allocatable :: system_type     !! Linux, Darwin, etc.?
+    character(:), allocatable :: hostname        !! Full host name
 
   contains
     procedure, public :: init
-    procedure, nopass, private :: get_mac_cpu_info_integer
+    procedure, nopass, private :: get_commandline_result_integer
+    procedure, nopass, private :: get_commandline_result_character
+    procedure, nopass, private :: run_cmd
     procedure, nopass, private :: get_host_name
   end type
 
@@ -34,68 +40,98 @@ contains
     class(sys_info_t), intent(inout) :: self
     character(100) :: buffer
 
-
-    'lscpu | grep CPU\(s\): | cut -d":" -f2'
-
-    'sysctl -a | grep machdep.cpu.core_count | cut -d":" -f2 > _tmp_'
-    'sysctl -a | grep machdep.cpu.thread_count | cut -d":" -f2 > _tmp_'
+    call get_commandline_result_character(str='uname', result=self%system_type)
 
     if (self%system_type == 'Darwin') then
-      call get_mac_cpu_info_integer(search_str='machdep.cpu.core_count', int_value=self%ncpus)
-      call get_mac_cpu_info_integer(search_str='machdep.cpu.thread_count', int_value=self%nthreads)
-    elseif (self%system_type == 'unix') then
+      call get_commandline_result_integer(str='sysctl -a | grep machdep.cpu.core_count | cut -d":" -f2', int_value=self%n_cpus)
+      call get_commandline_result_integer(str='sysctl -a | grep machdep.cpu.thread_count | cut -d":" -f2', int_value=self%n_threads)
+    elseif (self%system_type == 'Linux') then
+      call get_commandline_result_integer(str='lscpu | grep "^CPU(s):" | cut -d":" -f2', int_value=self%n_cpus)
+      call get_commandline_result_integer(str='lscpu | grep "^Socket(s):" | cut -d":" -f2', int_value=self%n_sockets)
+      call get_commandline_result_integer(str='lscpu | grep "Thread(s) per core:" | cut -d":" -f2', int_value=self%threads_per_cpu)
     end if
 
-    if (self%nthreads > self%ncpus) self%is_hyperthreaded = .true.
+    self%n_physical_cores = self%n_cpus/self%threads_per_cpu
+    self%n_physical_cores_per_socket = self%n_physical_cores/self%n_sockets
+    self%n_threads = self%n_physical_cores*self%threads_per_cpu
+
+    if (self%n_cpus > self%n_physical_cores) self%is_hyperthreaded = .true.
 
     buffer = get_host_name()
     self%hostname = trim(buffer)
 
   end subroutine init
 
+  subroutine run_cmd(cmd)
+    !! Execute a command line call with error checking
+    character(*), intent(in) :: cmd
+    integer :: cstat, estat
+    character(100) :: cmsg
+
+    call execute_command_line(cmd, exitstat=estat, cmdstat=cstat, cmdmsg=cmsg)
+    if (cstat > 0) then
+      print *, "`"//cmd//"` execution failed with error ", trim(cmsg)
+    else if (cstat < 0) then
+      print *, "`"//cmd//"` execution not supported"
+      ! else
+      !   print *, "`"// cmd // "` completed with status ", estat
+    end if
+  end subroutine
+
   subroutine get_commandline_result_integer(str, int_value)
-    integer :: f
+    !! Save the output from a command line call and read the integer output
+    integer :: f, ierr
     character(:), allocatable :: cmd
+    character(100) :: fname
     character(*), intent(in) :: str
     integer, intent(out) :: int_value
 
-    cmd = str // ' > _tmp_'
-    call execute_command_line(command=cmd)
-    open (newunit=f, file="_tmp_")
+    fname = '_tmp_'
+
+    int_value = -1
+    cmd = str//' > '//trim(fname)
+    call run_cmd(cmd)
+    open (newunit=f, file=trim(fname), iostat=ierr)
+    if (ierr /= 0) then
+      print *, 'Error: unable to open: "'//trim(fname)//'"'
+      return
+    end if
+
     read (f, *) int_value
     close (f)
-    call execute_command_line("rm -rf _tmp_")
+
+    call run_cmd("rm -rf "//trim(fname))
 
   end subroutine get_commandline_result_integer
 
   subroutine get_commandline_result_character(str, result)
-    integer :: f
+    ! Save the output from a command line call and read the character output
+    integer :: f, ierr
     character(:), allocatable :: cmd
     character(*), intent(in) :: str
     character(:), allocatable, intent(out) :: result
+    character(200) :: buffer
+    character(100) :: fname
 
-    cmd = str // ' > _tmp_'
-    call execute_command_line(command=cmd)
-    open (newunit=f, file="_tmp_")
-    read (f, *) result
+    buffer = ''
+    fname = '_tmp_'
+
+    cmd = str//' > '//trim(fname)
+    call run_cmd(cmd)
+    open (newunit=f, file=trim(fname), iostat=ierr)
+
+    if (ierr /= 0) then
+      print *, 'Error: unable to open: "'//trim(fname)//'"'
+      return
+    end if
+
+    read (f, *) buffer
     close (f)
-    call execute_command_line("rm -rf _tmp_")
+    call run_cmd("rm -rf _tmp_")
+
+    result = trim(buffer)
+
   end subroutine get_commandline_result_character
-
-  subroutine get_mac_cpu_info_integer(search_str, int_value)
-    integer :: f
-    character(:), allocatable :: cmd
-    character(*), intent(in) :: search_str
-    integer, intent(out) :: int_value
-
-    cmd = 'sysctl -a | grep '//trim(search_str)//' | cut -d":" -f2 > _tmp_'
-    call execute_command_line(command=cmd)
-    open (newunit=f, file="_tmp_")
-    read (f, *) int_value
-    close (f)
-    call execute_command_line("rm -rf _tmp_")
-
-  end subroutine get_mac_cpu_info_integer
 
   function get_host_name() result(host_name)
     character(:), allocatable :: host_name
@@ -134,6 +170,14 @@ program cpu_info
   allocate (sys_info_t :: sys)
   call sys%init()
 
-  print *, sys%ncpus, sys%nthreads, sys%is_hyperthreaded, sys%hostname
+  print *, "# CPUs:", sys%n_cpus
+  print *, "# Physical cores:", sys%n_physical_cores
+  print *, "# Physical cores / socket:", sys%n_physical_cores_per_socket
+  print *, "# Sockets:", sys%n_sockets
+  print *, "# Total Threads:", sys%n_threads
+  print *, "# Threads / CPU:", sys%threads_per_cpu
+  print *, "Is hyperthreaded:", sys%is_hyperthreaded
+  print *, "Hostname: ", sys%hostname
+  print *, "System Type: ", sys%system_type
 
 end program cpu_info
